@@ -19,6 +19,9 @@ main <- function() {
   
   ## plot speed versus time
   plot.speed.v.time(MWT.df$strain, MWT.df$plate, MWT.df$temp, MWT.df$time,MWT.df$speed, folder_to_save)
+  
+  ## do ANOVA (and Tukey is there are multiple comparisons) of speed against strain
+  compare.speed(MWT.df$strain, MWT.df$plate, MWT.df$temp, MWT.df$time,MWT.df$speed, folder_to_save)
 }
 
 plot.speed.v.time <- function(strain, plate, temp, time, speed, folder) {
@@ -85,8 +88,61 @@ plot.speed.v.time <- function(strain, plate, temp, time, speed, folder) {
   dev.off()
 }
 
-compare.speed <- function(strain, time, speed){
+compare.speed <- function(strain, plate, temp, time, speed, folder){
+  ## get a list of strains to be plotted
+  strains.list <- unique(strain)
   
+  ## make a data frame from the inputted data
+  df <- data.frame(strain, plate, temp, time, speed)
+  
+  ##bin into time intervals to make it quicker to plot (average speed over every 30s for 10 min)
+  cut1 <- cut(time, breaks=seq(0, 700, by = 20))
+  df.int <- df
+  df.int$time <- cut1
+  times <- as.character(df.int$time)
+  
+  ## rename bins
+  library(stringr)
+  int_pattern <- ",[0-9]{1,}"
+  int <- str_extract(times,int_pattern)
+  int <- sub(",", "", int)
+  int <- as.numeric(int)
+  df.int$time <- int
+  
+  ## summarize speed (mean) for each time bin over strain and temperature
+  library(plyr)
+  
+  ## summarize speed over plates
+  df.int.temp <- df.int
+  df.int.temp <- ddply(df.int.temp,.(strain, plate, temp, time),summarise,speed=mean(speed))
+  df.int <- df.int.temp
+  
+  ## get rid of data from 0-40s of the experiment (sometimes the tracker doesn't start tracking 
+  ## until 15s into the experiment)
+  df.int <- df.int[which(df.int$time>40),]
+  
+  ## get rid of data beyond 600s (doesn't exist for all experiments)
+  df.int <- df.int[which(df.int$time<601),]
+  
+  ## calculate the number of strains to analyze
+  N.strain <- as.numeric(length(strains.list))
+  
+  ## do ANOVA and Tukey's posthoc test to test if groups are different (compare strains within 
+  ## each temperature)
+  for (j in 1:length(unique(df.int$temp))) {
+      my.aov <- aov(df.int$speed[which(df.int$temp==unique(df.int$temp)[j])]~df.int$strain[which(df.int$temp==unique(df.int$temp)[j])], data=df.int)
+      my.aov.summary <- capture.output(summary(my.aov), file = NULL)
+      write.table(paste("Reared at ", unique(df.int$temp)[j], " °C", sep =""), file=paste(folder, "/speed_vs_time.txt", sep=""), row.names=FALSE, col.names=FALSE, quote=FALSE, append = TRUE)
+      write.table(my.aov.summary, file=paste(folder, "/speed_vs_time.txt", sep=""), append = TRUE, quote=FALSE, row.names=FALSE, col.names=FALSE)
+      write.table("", file=paste(folder, "/speed_vs_time.txt", sep=""), append = TRUE, quote=FALSE, row.names=FALSE, col.names=FALSE)
+      ## if there are more than 2 strains, do a Tuekys posthoc test to control for multiple comparisons
+      if (N.strain > 2) {
+        posthoc <- TukeyHSD(x=my.aov, "df.int$strain[which(df.int$temp == unique(df.int$temp)[j])]", conf.level=0.95)
+        posthoc.to.print <- capture.output(posthoc, file=NULL)
+        write.table(posthoc.to.print, file=paste(folder, "/speed_vs_time.txt", sep=""), append = TRUE, quote=FALSE, row.names=FALSE, col.names=FALSE)
+        write.table("", file=paste(folder, "/speed_vs_time.txt", sep=""), append = TRUE, quote=FALSE, row.names=FALSE, col.names=FALSE)
+      }
+  }
 }
 
 main()
