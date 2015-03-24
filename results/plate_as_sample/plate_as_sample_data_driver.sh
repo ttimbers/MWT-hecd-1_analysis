@@ -16,3 +16,9 @@ cd ../..
 
 ## parse the first column into strain, date, etc and save it as merged.file.parsed
 rscript bin/parse.R data/individual_as_sample/merged.file
+
+## plot speed versus time
+## arguements
+##	1. file to analyze
+##	2. folder to save figures too
+rscript bin/speed_vs_time.R data/plate_as_sample/merged.file.parsed results/plate_as_sample
